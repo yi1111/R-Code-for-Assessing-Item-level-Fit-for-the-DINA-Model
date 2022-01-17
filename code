@@ -1,0 +1,142 @@
+library(GDINA)
+#Reading data + Q matrix
+data <- sim10GDINA$simdat
+Q <- sim10GDINA$simQ
+#number of attributes
+K<- ncol(Q)
+#number of items
+J<- nrow(Q)
+#number of examinees
+num.examinee<- nrow(data)
+#latent groups
+L<- attributepattern(K)
+num.L<-nrow(L)
+#fit <- GDINA(dat = data, Q = Q, verbose = 0)
+# Fit the data using the DINA model
+fit.DINA <- GDINA(dat = data, Q = Q, model = "DINA", verbose = 0)
+pspar<- personparm(fit.DINA)
+
+#make a matrix to count (and note) numbers of examinee in each latent group
+vec.L<-1:num.L
+N<- cbind(vec.L, rep(0,num.L))
+# N= num.examinee.in.L
+for (l in 1:num.L) {
+  for (n in 1:num.examinee) {
+    if (all(L[l, ]== pspar [n, ])){
+      N[l,2]<- N[l,2] +1
+    }else {
+      next
+    }
+  }
+}
+
+#make a matrix to count each examinee on which latent group
+vec.num.examinee<- 1:num.examinee
+EL<- cbind(vec.num.examinee, rep(0,num.examinee))
+for (n in 1:num.examinee) {
+  for (l in 1:num.L) {
+    if (all(pspar [n, ]== L[l, ])){
+      EL[n,2]<- l
+    }
+  }
+}
+#Olj calculation
+O<- matrix(rep(0,J*num.L),nrow=J,ncol = num.L)
+for (j in 1:J) {
+  for (l in 1:num.L) {
+    for (n in 1:num.examinee) {
+      if (EL[n,2]== l & data[n,j]==1) {
+        O[j,l]<- O[j,l]+1
+      }
+    }
+  }
+}
+#E calculation
+E=extract(fit.DINA, what = "expectedCorrect.LC")
+
+###==========###
+#Q1 Calculation#
+###==========###
+vec.J<-1:J
+Q1<- cbind(vec.J, rep(0,J))
+#under each item j,the value for each l
+Qjl<- matrix(rep(0,J*num.L),nrow=J,ncol = num.L)
+
+for (j in 1:J) {
+  for (l in 1:num.L) {
+    Qjl[j,l]<-(N[l,2]*((O[j,l]-E[j,l])^2))/(E[j,l]*(N[l,2]-E[j,l]))
+  }
+}
+
+for(j in 1:J){
+  Q1[j,2]<-sum(Qjl[j,])
+}
+
+###==========###
+#PD Calculation#
+###==========###
+PD<- cbind(vec.J, rep(0,J))
+#under each item j,the value for each l
+PDjl<- matrix(rep(0,J*num.L),nrow=J,ncol = num.L)
+
+for (j in 1:J) {
+  for (l in 1:num.L) {
+    PDjl[j,l]<- (O[j,l]*((O[j,l]/E[j,l])^(2/3))+(N[l,2]-O[j,l])*(((N[l,2]-O[j,l])/(N[l,2]-E[j,l]))^(2/3))- N[l,2])
+  }
+}
+
+for(j in 1:J){
+  PD[j,2]<-(9/5)*sum(PDjl[j,])
+}
+
+
+#*****************************************************************#
+#*************** calculation for Stone's method******************#
+#*****************************************************************#
+
+
+p.alphal.given.xi <- exp(indlogPost(fit.DINA))
+
+rjl <- t(data)%*%p.alphal.given.xi #equation 5
+
+
+
+Ns=colSums(p.alphal.given.xi)
+
+Es=extract(fit.DINA,"LCprob.parm")*matrix(Ns,nrow = J,ncol = num.L,byrow = T)
+
+
+
+###==================###
+#Stone's Q1 Calculation#
+###==================###
+vec.J<-1:J
+Q1s<- cbind(vec.J, rep(0,J))
+#under each item j,the value for each l
+Qsjl<- matrix(rep(0,J*num.L),nrow=J,ncol = num.L)
+
+for (j in 1:J) {
+  for (l in 1:num.L) {
+    Qsjl[j,l]<-(Ns[l]*((rjl[j,l]-Es[j,l])^2))/(Es[j,l]*(Ns[l]-Es[j,l]))
+  }
+}
+
+for(j in 1:J){
+  Q1s[j,2]<-sum(Qsjl[j,])
+}
+###==================###
+#Stone's PD Calculation#
+###==================###
+PDs<- cbind(vec.J, rep(0,J))
+#under each item j,the value for each l
+PDsjl<- matrix(rep(0,J*num.L),nrow=J,ncol = num.L)
+
+for (j in 1:J) {
+  for (l in 1:num.L) {
+    PDsjl[j,l]<- (rjl[j,l]*((rjl[j,l]/Es[j,l])^(2/3))+(Ns[l]-rjl[j,l])*(((Ns[l]-rjl[j,l])/(Ns[l]-Es[j,l]))^(2/3))- Ns[l])
+  }
+}
+
+for(j in 1:J){
+  PDs[j,2]<-(9/5)*sum(PDsjl[j,])
+}
